@@ -53,8 +53,8 @@
   </div>
 
   <script>
-    const API_URL = 'https://lf3wyyvtgc.execute-api.us-east-1.amazonaws.com/prod';
-
+   const UPLOAD_URL = 'https://jprfpjyfa75vglyyd2nyahrlvu0dkwmg.lambda-url.us-east-1.on.aws/';
+   const ANALYZE_URL = 'https://6zpgwfryg4zrvqejbzoytb2mvq0qzbst.lambda-url.us-east-1.on.aws/';
     function showFileName() {
       const file = document.getElementById('receiptInput').files[0];
       if (file) {
@@ -78,7 +78,7 @@
         const base64 = await toBase64(file);
 
         // Upload to S3
-        const uploadRes = await fetch(`${API_URL}/upload`, {
+        const uploadRes = await fetch(UPLOAD_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64 })
@@ -86,7 +86,7 @@
         const uploadData = await uploadRes.json();
 
         // Analyze
-        const analyzeRes = await fetch(`${API_URL}/analyze`, {
+        const analyzeRes = await fetch(ANALYZE_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ file_key: uploadData.file_key })

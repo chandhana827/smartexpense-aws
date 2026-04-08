@@ -11,49 +11,77 @@ BUCKET_NAME = 'smartexpense-receipts-chandhana'
 TABLE_NAME = 'Expenses'
 
 def lambda_handler(event, context):
-    body = json.loads(event['body'])
-    file_key = body['file_key']
+    # Handle CORS preflight
+    if event.get('httpMethod') == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS'
+            },
+            'body': ''
+        }
 
-    # Extract text using Textract
-    textract_response = textract.detect_document_text(
-        Document={'S3Object': {'Bucket': BUCKET_NAME, 'Name': file_key}}
-    )
-    
-    extracted_text = " ".join([
-        block['Text']
-        for block in textract_response['Blocks']
-        if block['BlockType'] == 'LINE'
-    ])
+    try:
+        body = json.loads(event['body'])
+        file_key = body['file_key']
 
-    # Analyze using Comprehend
-    key_phrases = comprehend.detect_key_phrases(
-        Text=extracted_text[:4000],
-        LanguageCode='en'
-    )
+        # Step 1: Extract text using Textract
+        textract_response = textract.detect_document_text(
+            Document={'S3Object': {'Bucket': BUCKET_NAME, 'Name': file_key}}
+        )
 
-    # Categorize
-    category = categorize_expense(extracted_text)
+        extracted_text = " ".join([
+            block['Text']
+            for block in textract_response['Blocks']
+            if block['BlockType'] == 'LINE'
+        ])
 
-    # Save to DynamoDB
-    table = dynamodb.Table(TABLE_NAME)
-    expense_id = str(uuid.uuid4())
-    table.put_item(Item={
-        'expense_id': expense_id,
-        'raw_text': extracted_text,
-        'category': category,
-        'timestamp': datetime.now().isoformat()
-    })
+        # Step 2: Analyze using Comprehend
+        key_phrases = comprehend.detect_key_phrases(
+            Text=extracted_text[:4000],
+            LanguageCode='en'
+        )
 
-    return {
-        'statusCode': 200,
-        'headers': {'Access-Control-Allow-Origin': '*'},
-        'body': json.dumps({
+        # Step 3: Categorize expense
+        category = categorize_expense(extracted_text)
+
+        # Step 4: Save to DynamoDB
+        table = dynamodb.Table(TABLE_NAME)
+        expense_id = str(uuid.uuid4())
+        table.put_item(Item={
             'expense_id': expense_id,
-            'extracted_text': extracted_text,
+            'raw_text': extracted_text,
             'category': category,
-            'key_phrases': [p['Text'] for p in key_phrases['KeyPhrases'][:5]]
+            'timestamp': datetime.now().isoformat()
         })
-    }
+
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS'
+            },
+            'body': json.dumps({
+                'expense_id': expense_id,
+                'extracted_text': extracted_text,
+                'category': category,
+                'key_phrases': [p['Text'] for p in key_phrases['KeyPhrases'][:5]]
+            })
+        }
+
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS'
+            },
+            'body': json.dumps({'error': str(e)})
+        }
 
 def categorize_expense(text):
     text = text.lower()

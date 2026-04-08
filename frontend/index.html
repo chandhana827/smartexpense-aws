@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartExpense Analyzer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .container { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 600px; }
+    h1 { color: #232f3e; margin-bottom: 8px; }
+    p.subtitle { color: #666; margin-bottom: 30px; }
+    .upload-area { border: 2px dashed #ff9900; border-radius: 12px; padding: 30px; text-align: center; margin-bottom: 20px; cursor: pointer; background: #fff8f0; }
+    .upload-area input { display: none; }
+    .upload-area label { cursor: pointer; color: #ff9900; font-weight: bold; font-size: 16px; }
+    .upload-area p { color: #999; margin-top: 8px; font-size: 13px; }
+    #fileName { margin-top: 10px; color: #232f3e; font-size: 14px; }
+    button { width: 100%; padding: 14px; background: #ff9900; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.3s; }
+    button:hover { background: #e68900; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #result { margin-top: 24px; display: none; }
+    .result-card { background: #f8f9fa; border-radius: 12px; padding: 20px; border-left: 4px solid #ff9900; }
+    .result-card h3 { color: #232f3e; margin-bottom: 16px; }
+    .badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; margin-bottom: 12px; }
+    .Food { background: #fff3cd; color: #856404; }
+    .Transport { background: #cfe2ff; color: #084298; }
+    .Shopping { background: #d1e7dd; color: #0a3622; }
+    .Healthcare { background: #f8d7da; color: #842029; }
+    .General { background: #e2e3e5; color: #41464b; }
+    .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: #666; }
+    .detail-value { color: #232f3e; font-weight: 500; max-width: 60%; text-align: right; }
+    .loading { text-align: center; padding: 20px; color: #ff9900; font-weight: bold; }
+    .error { background: #f8d7da; color: #842029; padding: 15px; border-radius: 8px; margin-top: 15px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧾 SmartExpense</h1>
+    <p class="subtitle">AI-powered receipt analyzer using AWS</p>
+
+    <div class="upload-area">
+      <input type="file" id="receiptInput" accept="image/*" onchange="showFileName()">
+      <label for="receiptInput">📁 Click to Upload Receipt</label>
+      <p>Supports JPG, PNG, JPEG</p>
+      <div id="fileName"></div>
+    </div>
+
+    <button id="analyzeBtn" onclick="analyzeReceipt()">🔍 Analyze Receipt</button>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const API_URL = 'https://lf3wyyvtgc.execute-api.us-east-1.amazonaws.com/prod';
+
+    function showFileName() {
+      const file = document.getElementById('receiptInput').files[0];
+      if (file) {
+        document.getElementById('fileName').textContent = '✅ ' + file.name;
+      }
+    }
+
+    async function analyzeReceipt() {
+      const file = document.getElementById('receiptInput').files[0];
+      if (!file) { alert('Please select a receipt image!'); return; }
+
+      const btn = document.getElementById('analyzeBtn');
+      const resultDiv = document.getElementById('result');
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Analyzing...';
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading">🔄 Processing your receipt with AWS AI...</div>';
+
+      try {
+        const base64 = await toBase64(file);
+
+        // Upload to S3
+        const uploadRes = await fetch(`${API_URL}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64 })
+        });
+        const uploadData = await uploadRes.json();
+
+        // Analyze
+        const analyzeRes = await fetch(`${API_URL}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_key: uploadData.file_key })
+        });
+        const data = await analyzeRes.json();
+
+        const categoryClass = data.category.split(' ')[0];
+
+        resultDiv.innerHTML = `
+          <div class="result-card">
+            <h3>✅ Analysis Complete</h3>
+            <span class="badge ${categoryClass}">${data.category}</span>
+            <div class="detail-row">
+              <span class="detail-label">🆔 Expense ID</span>
+              <span class="detail-value">${data.expense_id.substring(0, 8)}...</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">🏷️ Key Details</span>
+              <span class="detail-value">${data.key_phrases.join(', ') || 'N/A'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">📄 Extracted Text</span>
+              <span class="detail-value">${data.extracted_text.substring(0, 100)}...</span>
+            </div>
+          </div>
+        `;
+      } catch (err) {
+        resultDiv.innerHTML = `<div class="error">❌ Error: ${err.message}</div>`;
+      }
+
+      btn.disabled = false;
+      btn.textContent = '🔍 Analyze Receipt';
+    }
+
+    function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+      });
+    }
+  </script>
+</body>
+</html>

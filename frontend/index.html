@@ -53,8 +53,9 @@
   </div>
 
   <script>
-   const UPLOAD_URL = 'https://jprfpjyfa75vglyyd2nyahrlvu0dkwmg.lambda-url.us-east-1.on.aws/';
-   const ANALYZE_URL = 'https://6zpgwfryg4zrvqejbzoytb2mvq0qzbst.lambda-url.us-east-1.on.aws/';
+    const UPLOAD_URL = 'https://jprfpjyfa75vglyyd2nyahrlvu0dkwmg.lambda-url.us-east-1.on.aws/';
+    const ANALYZE_URL = 'https://6zpgwfryg4zrvqejbzoytb2mvq0qzbst.lambda-url.us-east-1.on.aws/';
+
     function showFileName() {
       const file = document.getElementById('receiptInput').files[0];
       if (file) {
@@ -83,7 +84,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64 })
         });
-        const uploadData = await uploadRes.json();
+
+        const uploadText = await uploadRes.text();
+        console.log('Upload response:', uploadText);
+        const uploadData = JSON.parse(uploadText);
+
+        if (!uploadData.file_key) {
+          throw new Error('Upload failed: ' + uploadText);
+        }
 
         // Analyze
         const analyzeRes = await fetch(ANALYZE_URL, {
@@ -91,7 +99,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ file_key: uploadData.file_key })
         });
-        const data = await analyzeRes.json();
+
+        const analyzeText = await analyzeRes.text();
+        console.log('Analyze response:', analyzeText);
+        const data = JSON.parse(analyzeText);
+
+        if (!data.category) {
+          throw new Error('Analysis failed: ' + analyzeText);
+        }
 
         const categoryClass = data.category.split(' ')[0];
 
